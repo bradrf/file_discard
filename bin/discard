@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'ostruct'
+require 'file_discard'
+
+options = OpenStruct.new
+parser  = OptionParser.new do |opts|
+  Version = FileDiscard::VERSION
+  Release = FileDiscard::RELEASE
+
+  opts.on('-v', '--verbose', 'show where files are discarded') do |v|
+    options.verbose = v
+  end
+
+  opts.on('-h', '--help', 'show this message') do
+    puts opts
+    exit
+  end
+
+  opts.on('--version', 'show version') do
+    puts opts.ver
+    exit
+  end
+
+  opts.separator('')
+  opts.separator('Options ignored to provide compatibility with "rm":')
+  [?d,?f,?i,?P,?R,?r].each {|a| opts.on("-#{a}")}
+
+  opts.banner << ' file ...'
+end
+
+parser.parse!
+
+if ARGV.size < 1
+  puts parser
+  exit 64 # use same exit status as rm with no files
+end
+
+status = 0
+ARGV.each do |file|
+  begin
+    FileDiscard.discard(file, options.marshal_dump)
+  rescue Errno::EINVAL, Errno::ENOENT => ex
+    $stderr.puts "#{parser.program_name}: #{file}: #{ex.message}"
+    status = 1
+  rescue Exception => ex
+    $stderr.puts "#{parser.program_name}: #{file}: #{ex.class} #{ex.message}"
+    $stderr.puts ex.backtrace if options.verbose
+    status = 2
+  end
+end
+
+exit status

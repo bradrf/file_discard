@@ -25,14 +25,14 @@ require 'fileutils'
 
 module FileDiscard
 
-  VERSION = '0.0.1'
+  load "#{File.dirname(__FILE__)}/file_discard_version.rb"
 
   ######################################################################
   # Module Methods
 
   def self.mix_it_in!
-    [File, Pathname].each do |c|
-      c.class_eval do
+    [File, Pathname].each do |klass|
+      klass.class_eval do
         def self.discard(*args)
           FileDiscard.discarder.discard(*args)
         end
@@ -66,8 +66,10 @@ module FileDiscard
   # Discarders
 
   class Discarder
-    def initialize(home_trash, mountpoint_trash_fmt)
-      home = Pathname.new('~').expand_path
+    SPECIAL_DIRS = ['.','..']
+
+    def initialize(home, home_trash, mountpoint_trash_fmt)
+      home = pathname_for(home).expand_path
       @home_trash = home.join(home_trash)
       @home_mountpoint = mountpoint_of home
       @mountpoint_trash_fmt = mountpoint_trash_fmt
@@ -75,10 +77,12 @@ module FileDiscard
 
     def discard(obj, move_options = {})
       pn = pathname_for obj
+      if SPECIAL_DIRS.include?(pn.basename.to_s)
+        raise Errno::EINVAL.new(SPECIAL_DIRS.join(' and ') << ' may not be removed')
+      end
       trash = find_trash_for pn
       raise Errno::ENOENT.new(trash.to_s) unless trash.exist?
-      dst = uniquify(trash.join(pn.basename))
-      FileUtils.mv pn.expand_path, dst, move_options
+      move(pn, trash, move_options)
     end
 
     private
@@ -104,36 +108,58 @@ module FileDiscard
         end
       end
 
+      def move(src, dst, options)
+        src = src.expand_path
+        dst = uniquify(dst.join(src.basename))
+        FileUtils.mv src, dst, options
+        yield src, dst if block_given?
+      end
+
       def uniquify(pn)
         return pn unless pn.exist?
 
+        dn   = pn.dirname
         ext  = pn.extname
         base = pn.basename(ext).to_s
-        dn   = pn.dirname
 
-        count = 0
         fmt = bfmt = '%H.%M.%S'
 
-        loop do
+        10.times do |i|
           ts = Time.now.strftime(fmt)
           pn = dn.join("#{base} #{ts}#{ext}")
           return pn unless pn.exist?
-          fmt = bfmt + ".%#{count}N" # use fractional seconds, with increasing precision
-          count += 1
+          fmt = bfmt + ".%#{i}N" # use fractional seconds, with increasing precision
         end
+
+        raise RuntimeError.new(%{Unable to uniquify "#{base}" (last attempt: #{pn})})
       end
   end # class Discarder
 
   class OsxDiscarder < Discarder
-    def initialize
-      super '.Trash', '.Trashes/%s'
+    def initialize(home = '~')
+      super home, '.Trash', '.Trashes/%s'
     end
   end
 
   class LinuxDiscarder < Discarder
-    def initialize
-      super '.local/share/Trash', '.Trash-%s'
+    def initialize(home = '~')
+      super home, '.local/share/Trash/files', '.Trash-%s/files'
     end
+
+    # Linux has a special layout for the trash folder and tracking for restore.
+    # See http://www.freedesktop.org/wiki/Specifications/trash-spec/
+    private
+      def move(*args)
+        super do |src, dst|
+          dst.dirname.dirname.join('info',"#{dst.basename}.trashinfo").open('w') do |io|
+            io.write <<EOF
+[Trash Info]
+Path=#{src}
+DeletionDate=#{Time.now.strftime('%Y-%m-%dT%H:%M:%S')}
+EOF
+          end
+        end
+      end
   end
 
 end # module FileDiscard
