@@ -1,4 +1,4 @@
-`FileDiscard` is a simple helper to make it easy for applications to move files to the correct trash folder. The location is determined by the platform and what file is being discarded (the latter is important so that files on other volumes/mountpoints are moved in to the appropriate trash folder).
+FileDiscard is a simple helper to make it easy for applications to move files to the correct trash folder. The location is determined by the platform and what file is being discarded (the latter is important so that files on other volumes/mountpoints are moved in to the appropriate trash folder).
 
 ## Getting Started
 
@@ -9,17 +9,17 @@ Part of the `file_discard` gem is an executable that can be used as a drop-in re
 ```shell
 > discard
 Usage: discard [options] file ...
+    -d, --dir                        allow empty directories to be discarded
+    -r                               allow directories to be discarded recursively
+    -R, --recursive                  allow directories to be discarded recursively
     -v, --verbose                    show where files are discarded
     -h, --help                       show this message
         --version                    show version
 
 Options ignored to provide compatibility with "rm":
-    -d
     -f
     -i
-    -P
-    -R
-    -r
+    -I
 ```
 
 ### Using the Library
@@ -54,7 +54,7 @@ p.open('w') {|io| io.puts 'four'}
 Pathname.discard 'file4.txt'
 ```
 
-Another approach is to leave Ruby's [`File`](http://www.ruby-doc.org/core/File.html) and [`Pathname`](http://www.ruby-doc.org/stdlib/libdoc/pathname/rdoc/Pathname.html) classes alone and work directly with `FileDiscard`:
+Another approach is to leave Ruby's [`File`](http://www.ruby-doc.org/core/File.html) and [`Pathname`](http://www.ruby-doc.org/stdlib/libdoc/pathname/rdoc/Pathname.html) classes alone and work directly with FileDiscard:
 
 ```ruby
 require 'file_discard'
@@ -73,7 +73,7 @@ FileDiscard.discard 'file6.txt'
 
 #### More Options
 
-Under the covers, `FileDiscard` makes use of [`FileUtils.mv`](http://ruby-doc.org/stdlib/libdoc/fileutils/rdoc/FileUtils.html#method-c-mv) and passes any other options through:
+A call to discard can enable a report of the operation that is taking place:
 
 ```ruby
 require 'file_discard'
@@ -94,7 +94,9 @@ Pathname.discard 'file8.txt', verbose:true
 # ===> mv /path/to/file8.txt /Users/brad/.Trash/file8.txt
 ```
 
-Also of note is that `FileDiscard` will not blindly stomp on existing files already present in the trash. Instead, much like OS X's Finder, `FileDiscard` creates new file names based on the time when a collision occurs:
+Other options can be enabled to allow discarding empty directories (:directory) or directories with items in them (:recursive).
+
+Also of note is that FileDiscard will not blindly stomp on existing files already present in the trash. Instead, much like OS X's Finder, FileDiscard creates new file names based on the time when a collision occurs:
 
 ```ruby
 require 'file_discard'
@@ -154,16 +156,16 @@ Pathname.new('/path/to/my/home/a/trash/folder').children
 # ===> [#<Pathname:/path/to/my/home/a/trash/folder/myfile.txt>]
 ```
 
-Each `Discarder` is expected to provide the following (as passed to the base class initializer):
+Each FileDiscard::Discarder is expected to provide the following (as passed to FileDiscard::Discarder.new):
 
-1. `home`: An _absolute_ path to the home directory of the current user. `FileDiscard` will expand the path, so on systems that support it, special variables can be used (e.g. a tilde (~) will expand to the current user's home directory on OS X and Linux).
+1. `home`: An _absolute_ path to the home directory of the current user. FileDiscard will expand the path, so on systems that support it, special variables can be used (e.g. a tilde (~) will expand to the current user's home directory on OS X and Linux).
 
 2. `home_trash`: A _relative_ path where the trash is expected from the `home` directory.
 
 3. `mountpoint_trash_fmt`: A _relative_ path where the trash is expected from any given mountpoint. This string can optionally include a `%s` format specifier which will be replaced by the current user's numeric ID (ie. UID).
 
-The base `Discarder` will rely on comparison between mountpoints (as determined by [`Pathname#mountpoint?`](http://www.ruby-doc.org/stdlib/libdoc/pathname/rdoc/Pathname.html#method-i-mountpoint-3F)) to decide if the home trash should be used or if a shared trash for another mounted volume should be used. In other words, if the mountpoint of the file being trashed is _not_ the same as the `home` directory's mountpoint, the `Discarder` will use the trash located in the mountpoint associated with the file being discarded using the `mountpoint_trash_fmt` relative result as presented by the discarder.
+The FileDiscard::Discarder will rely on comparison between mountpoints (as determined by [`Pathname#mountpoint?`](http://www.ruby-doc.org/stdlib/libdoc/pathname/rdoc/Pathname.html#method-i-mountpoint-3F)) to decide if the home trash should be used or if a shared trash for another mounted volume should be used. In other words, if the mountpoint of the file being trashed is _not_ the same as the `home` directory's mountpoint, the discarder will use the trash located in the mountpoint associated with the file being discarded using the `mountpoint_trash_fmt` relative result as presented by the discarder.
 
-If the trash location does not already exist, the `Discarder` will not automatically create it. Instead, it will raise a `Errno::ENOENT` exception for any discard request that attempts to move a file to a trash that does not exist. It is expected that the caller will ensure the trash directories are present before attempting to discard files.
+If the trash location does not already exist, the FileDiscard::Discarder will not automatically create it. Instead, it will raise a FileDiscard::TrashMissing exception for any discard request that attempts to move a file to a trash that does not exist. It is expected that the caller will ensure the trash directories are present before attempting to discard files or make use of FileDiscard.create_trash_when_missing= to enable automatically creating missing trash folders.
 
-For a more complex example, check out the [`FileDiscard::LinuxDiscarder`](lib/file_discard.rb#L144-L164).
+For a more complex example, see FileDiscard::LinuxDiscarder.

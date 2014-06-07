@@ -24,6 +24,7 @@ describe FileDiscard do
 
       @discarder = FileDiscard::OsxDiscarder.new(@home)
       FileDiscard.discarder = @discarder
+      FileDiscard.create_trash_when_missing = false
     end
 
     after do
@@ -49,7 +50,13 @@ describe FileDiscard do
 
       it 'should fail without trash' do
         f = File.new(@base.join('file.txt').to_s, 'w')
-        ->{ f.discard }.must_raise Errno::ENOENT
+        ->{ f.discard }.must_raise FileDiscard::TrashMissing
+      end
+
+      it 'should support creating missing trash' do
+        FileDiscard.create_trash_when_missing = true
+        f = File.new(@base.join('file.txt').to_s, 'w')
+        f.discard
       end
 
       describe 'with trash in the home' do
@@ -60,6 +67,22 @@ describe FileDiscard do
 
         def sorted_trash
           @trash.children(false).collect(&:to_s).sort
+        end
+
+        it 'should conditionally allow removal of empty directories' do
+          d = @base.join('foozy')
+          d.mkdir
+          ->{ FileDiscard.discard(d) }.must_raise Errno::EISDIR
+          FileDiscard.discard(d, directory: true)
+        end
+
+        it 'should conditionally allow removal of non-empty directories' do
+          d = @base.join('foozy')
+          d.mkdir
+          f = d.join('stuff.txt')
+          f.open('w') {|io| io.puts 'stuff'}
+          ->{ FileDiscard.discard(d, directory: true) }.must_raise Errno::ENOTEMPTY
+          FileDiscard.discard(d, recursive: true)
         end
 
         it 'should discard a file' do

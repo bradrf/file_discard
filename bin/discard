@@ -9,6 +9,16 @@ parser  = OptionParser.new do |opts|
   Version = FileDiscard::VERSION
   Release = FileDiscard::RELEASE
 
+  opts.on('-d', '--dir', 'allow empty directories to be discarded') do |v|
+    options.directory = v
+  end
+
+  [?r,?R].each do |o|
+    opts.on("-#{o}", '--recursive', 'allow directories to be discarded recursively') do |v|
+      options.recursive = v
+    end
+  end
+
   opts.on('-v', '--verbose', 'show where files are discarded') do |v|
     options.verbose = v
   end
@@ -25,7 +35,7 @@ parser  = OptionParser.new do |opts|
 
   opts.separator('')
   opts.separator('Options ignored to provide compatibility with "rm":')
-  [?d,?f,?i,?P,?R,?r].each {|a| opts.on("-#{a}")}
+  [?f,?i,?I].each {|o| opts.on("-#{o}")}
 
   opts.banner << ' file ...'
 end

@@ -30,12 +30,15 @@ module FileDiscard
   ######################################################################
   # Module Methods
 
+  # Extend Ruby's +File+ and +Pathname+ classes with Discarder.discard methods.
   def self.mix_it_in!
     [File, Pathname].each do |klass|
       klass.class_eval do
+        # :nodoc:
         def self.discard(*args)
           FileDiscard.discarder.discard(*args)
         end
+        # :nodoc:
         def discard(options = {})
           FileDiscard.discarder.discard(self, options)
         end
@@ -44,10 +47,12 @@ module FileDiscard
     self
   end
 
+  # See Discarder.discard for usage.
   def self.discard(*args)
     discarder.discard(*args)
   end
 
+  # Set the default discarder to use.
   def self.discarder=(discarder)
     @@discarder = discarder
   end
@@ -62,11 +67,27 @@ module FileDiscard
                     end
   end
 
+  @@create_trash_when_missing = false
+
+  # Enable or disable the automatic creation of trash directories if they do not exist. The default
+  # is to raise a TrashMissing exception).
+  def self.create_trash_when_missing=(value)
+    @@create_trash_when_missing = value
+  end
+
+  def self.create_trash_when_missing
+    @@create_trash_when_missing
+  end
+
   ######################################################################
   # Discarders
 
+  # Raised when the configured trash directory for a given mountpoint does not exist.
+  class TrashMissing < Errno::ENOENT; end;
+
+  # The core logic for moving files to an appropriate trash directory.
   class Discarder
-    SPECIAL_DIRS = ['.','..']
+    SPECIAL_DIRS = ['.','..'] # :nodoc:
 
     def initialize(home, home_trash, mountpoint_trash_fmt)
       home = pathname_for(home).expand_path
@@ -75,13 +96,39 @@ module FileDiscard
       @mountpoint_trash_fmt = mountpoint_trash_fmt
     end
 
-    def discard(obj, move_options = {})
+    # Request that +obj+ be moved to the trash.
+    #
+    # +options+ - a hash of any of the following:
+    # * :directory - allow an empty directory to be discarded
+    # * :recursive - allow a directory to be discarded even if not empty
+    # * :verbose - report the move operation
+    #
+    # May raise:
+    # * Errno::EINVAL - +obj+ is "." or ".." which are not allowed to be discarded
+    # * Errno::EISDIR - +obj+ is a directory
+    # * Errno::ENOTEMPTY - +obj+ is a directory with children
+    # * Errno::ENOENT - +obj+ does not exist on the file system
+    # * TrashMissing - the trash directory for the mountpoint associated with +obj+ did not exist
+    #
+    def discard(obj, options = {})
       pn = pathname_for obj
-      if SPECIAL_DIRS.include?(pn.basename.to_s)
-        raise Errno::EINVAL.new(SPECIAL_DIRS.join(' and ') << ' may not be removed')
+      if pn.directory?
+        if SPECIAL_DIRS.include?(pn.basename.to_s)
+          raise Errno::EINVAL.new(SPECIAL_DIRS.join(' and ') << ' may not be removed')
+        end
+        unless options[:recursive]
+          raise Errno::EISDIR.new(pn.to_s)    unless options[:directory]
+          raise Errno::ENOTEMPTY.new(pn.to_s) if pn.children.any?
+        end
       end
+
       trash = find_trash_for pn
-      raise Errno::ENOENT.new(trash.to_s) unless trash.exist?
+      unless trash.exist?
+        raise TrashMissing.new(trash.to_s) unless FileDiscard.create_trash_when_missing
+        trash.mkpath
+      end
+
+      move_options = options.has_key?(:verbose) ? {verbose: options[:verbose]} : {}
       move(pn, trash, move_options)
     end
 
