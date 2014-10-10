@@ -16,19 +16,29 @@ load File.expand_path(File.join(File.dirname(__FILE__),'..','lib','file_discard.
 describe FileDiscard do
 
   describe :Discarder do
-    before do
-      @base = Pathname.new(Dir.mktmpdir(File.basename(__FILE__,'.rb') + '_'))
-      @home = @base.join('home')
-      @home.mkdir
-      @home_trash = '.Trash'
+    let(:base) { Pathname.new(Dir.mktmpdir(File.basename(__FILE__,'.rb') + '_')) }
+    let(:home) do
+      h = base.join('home')
+      h.mkdir
+      h
+    end
 
-      @discarder = FileDiscard::OsxDiscarder.new(@home)
-      FileDiscard.discarder = @discarder
+    let(:home_trash) { '.Trash' }
+    let(:trash) do
+      t = home.join(home_trash)
+      t.mkdir
+      t
+    end
+
+    let(:discarder) { FileDiscard::OsxDiscarder.new(home) }
+
+    before do
+      FileDiscard.discarder = discarder
       FileDiscard.create_trash_when_missing = false
     end
 
     after do
-      @base.rmtree if @base && @base.exist?
+      base.rmtree
     end
 
     it 'should not allow removal of special directories' do
@@ -49,35 +59,34 @@ describe FileDiscard do
       end
 
       it 'should fail without trash' do
-        f = File.new(@base.join('file.txt').to_s, 'w')
+        f = File.new(base.join('file.txt').to_s, 'w')
         ->{ f.discard }.must_raise FileDiscard::TrashMissing
       end
 
       it 'should support creating missing trash' do
         FileDiscard.create_trash_when_missing = true
-        f = File.new(@base.join('file.txt').to_s, 'w')
+        f = File.new(base.join('file.txt').to_s, 'w')
         f.discard
       end
 
       describe 'with trash in the home' do
-        before do
-          @trash = @home.join(@home_trash)
-          @trash.mkdir
+        def sorted_trash
+          trash.children(false).collect(&:to_s).sort
         end
 
-        def sorted_trash
-          @trash.children(false).collect(&:to_s).sort
+        before do
+          trash # ensure trash is created, but as late as possible for let-overrides
         end
 
         it 'should conditionally allow removal of empty directories' do
-          d = @base.join('foozy')
+          d = base.join('foozy')
           d.mkdir
           ->{ FileDiscard.discard(d) }.must_raise Errno::EISDIR
           FileDiscard.discard(d, directory: true)
         end
 
         it 'should conditionally allow removal of non-empty directories' do
-          d = @base.join('foozy')
+          d = base.join('foozy')
           d.mkdir
           f = d.join('stuff.txt')
           f.open('w') {|io| io.puts 'stuff'}
@@ -86,16 +95,42 @@ describe FileDiscard do
         end
 
         it 'should discard a file' do
-          f = File.new(@base.join('file.txt').to_s, 'w')
+          f = File.new(base.join('file.txt').to_s, 'w')
           f.discard
           sorted_trash.must_equal ['file.txt']
         end
 
         it 'should discard a pathname' do
-          f = @base.join('file.txt')
+          f = base.join('file.txt')
           f.open('w') {|io| io.puts 'nothing'}
           f.discard
           sorted_trash.must_equal ['file.txt']
+        end
+
+        describe 'with a symbolic links' do
+          let(:target) do
+            t = base.join('target')
+            t.open('w') {|io| io.puts 'nothing'}
+            t
+          end
+
+          let(:file) do
+            f = home.join('pointer')
+            f.make_symlink(target)
+            f
+          end
+
+          it 'should leave the target untouched' do
+            file.discard
+            sorted_trash.must_equal ['pointer']
+            target.exist?.must_equal true
+          end
+
+          it 'should not fail when target is missing' do
+            target.unlink
+            file.discard
+            sorted_trash.must_equal ['pointer']
+          end
         end
 
         describe 'with control over time' do
@@ -120,10 +155,10 @@ describe FileDiscard do
           end
 
           it 'should not overwite other trashed files' do
-            f = @trash.join('file.txt')
+            f = trash.join('file.txt')
             f.open('w') {|io| io.puts 'nothing'}
 
-            f = @base.join('file.txt')
+            f = base.join('file.txt')
             f.open('w') {|io| io.puts 'nothing'}
             FileDiscard.discard(f.to_s)
             sorted_trash.must_equal ['file 9.8.1.txt','file.txt']
@@ -131,11 +166,11 @@ describe FileDiscard do
 
           it 'should use increasing precision for collisions' do
             3.times do |i|
-              f = @trash.join(%{file#{i == 0 ? '' : " 9.8.#{i}"}.txt})
+              f = trash.join(%{file#{i == 0 ? '' : " 9.8.#{i}"}.txt})
               f.open('w') {|io| io.puts 'nothing'}
             end
 
-            f = @base.join('file.txt')
+            f = base.join('file.txt')
             f.open('w') {|io| io.puts 'nothing'}
             File.discard(f.to_s)
             sorted_trash
@@ -151,15 +186,11 @@ describe FileDiscard do
             end
           end
 
-          before do
-            @trash = @base.join('mytrash-%s' % Process.uid)
-            @trash.mkdir
-            @discarder = MyDiscarder.new(@home, 'mytrash', 'mytrash-%s')
-            FileDiscard.discarder = @discarder
-          end
+          let(:home_trash) { base.join('mytrash-%s' % Process.uid) }
+          let(:discarder)  { MyDiscarder.new(home, 'mytrash', 'mytrash-%s') }
 
           it 'should not use the home trash' do
-            f = @base.join('file.txt')
+            f = base.join('file.txt')
             f.open('w') {|io| io.puts 'nothing'}
             f.discard
             sorted_trash.must_equal ['file.txt']

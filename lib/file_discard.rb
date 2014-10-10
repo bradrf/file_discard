@@ -21,7 +21,6 @@
 # SOFTWARE.
 
 require 'pathname'
-require 'fileutils'
 
 module FileDiscard
 
@@ -139,8 +138,14 @@ module FileDiscard
       end
 
       def find_trash_for(pn)
-        pd = pn.expand_path.realpath.dirname
-        mp = mountpoint_of pd
+        pn_path = pn.expand_path
+        if pn_path.symlink?
+          # Use the containing directory's real path for symbolic links, not the target of the link
+          pd = pn_path.dirname.realpath
+        else
+          pd = pn_path.realpath.dirname
+        end
+        mp = mountpoint_of(pd)
         return @home_trash if mp == @home_mountpoint
         mp.join(@mountpoint_trash_fmt % Process.uid)
       end
@@ -158,8 +163,9 @@ module FileDiscard
       def move(src, dst, options)
         src = src.expand_path
         dst = uniquify(dst.join(src.basename))
-        FileUtils.mv src, dst, options
-        yield src, dst if block_given?
+        puts "#{src} => #{dst}" if options[:verbose]
+        File.rename(src, dst)
+        yield(src, dst) if block_given?
       end
 
       def uniquify(pn)

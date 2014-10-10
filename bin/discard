@@ -2,7 +2,7 @@
 
 require 'optparse'
 require 'ostruct'
-require 'file_discard'
+require_relative '../lib/file_discard'
 
 options = OpenStruct.new
 parser  = OptionParser.new do |opts|
@@ -46,6 +46,8 @@ if ARGV.size < 1
   puts parser
   exit 64 # use same exit status as rm with no files
 end
+
+FileDiscard.create_trash_when_missing = true
 
 status = 0
 ARGV.each do |file|

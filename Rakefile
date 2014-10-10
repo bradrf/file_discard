@@ -8,13 +8,13 @@ task default: :test
 task spec: :test
 task build: :package
 
-PKG_VERSION = '0.1.3'
+PKG_VERSION = '0.1.4'
 NOW = Time.now.utc
 
 # delay updating the version file unless building the gem or package
 VER_FN = 'lib/file_discard_version.rb'
 task :update_version do
-  File.open(VER_FN,'w') do |f|
+  File.open(VER_FN,'w',0644) do |f|
     f.puts <<EOF
 module FileDiscard
   # :nodoc:
