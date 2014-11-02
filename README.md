@@ -2,6 +2,14 @@ FileDiscard is a simple helper to make it easy for applications to move files to
 
 ## Getting Started
 
+### Installation
+
+```shell
+> gem install file_discard
+```
+
+[![Gem Version](https://badge.fury.io/rb/file_discard.svg)](http://badge.fury.io/rb/file_discard)
+
 ### Using the Executable
 
 Part of the `file_discard` gem is an executable that can be used as a drop-in replacement for "rm":
