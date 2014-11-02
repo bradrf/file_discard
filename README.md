@@ -17,6 +17,7 @@ Part of the `file_discard` gem is an executable that can be used as a drop-in re
 ```shell
 > discard
 Usage: discard [options] file ...
+    -f, --force                      when provided twice, permanently remove targets
     -d, --dir                        allow empty directories to be discarded
     -r                               allow directories to be discarded recursively
     -R, --recursive                  allow directories to be discarded recursively
@@ -25,7 +26,6 @@ Usage: discard [options] file ...
         --version                    show version
 
 Options ignored to provide compatibility with "rm":
-    -f
     -i
     -I
 ```
