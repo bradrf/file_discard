@@ -8,7 +8,7 @@ task default: :test
 task spec: :test
 task build: :package
 
-PKG_VERSION = '0.1.4'
+PKG_VERSION = '0.1.5'
 NOW = Time.now.utc
 
 # delay updating the version file unless building the gem or package

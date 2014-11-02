@@ -4,10 +4,14 @@ require 'optparse'
 require 'ostruct'
 require_relative '../lib/file_discard'
 
-options = OpenStruct.new
+options = OpenStruct.new(force: 0)
 parser  = OptionParser.new do |opts|
   Version = FileDiscard::VERSION
   Release = FileDiscard::RELEASE
+
+  opts.on('-f', '--force', 'when provided twice, permanently remove targets') do
+    options.force += 1
+  end
 
   opts.on('-d', '--dir', 'allow empty directories to be discarded') do |v|
     options.directory = v
@@ -35,7 +39,7 @@ parser  = OptionParser.new do |opts|
 
   opts.separator('')
   opts.separator('Options ignored to provide compatibility with "rm":')
-  [?f,?i,?I].each {|o| opts.on("-#{o}")}
+  [?i,?I].each {|o| opts.on("-#{o}")}
 
   opts.banner << ' file ...'
 end
@@ -58,7 +62,7 @@ ARGV.each do |file|
     status = 1
   rescue Exception => ex
     $stderr.puts "#{parser.program_name}: #{file}: #{ex.class} #{ex.message}"
-    $stderr.puts ex.backtrace if options.verbose
+    options.verbose and $stderr.puts ex.backtrace
     status = 2
   end
 end

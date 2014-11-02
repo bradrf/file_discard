@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 require 'pathname'
+require 'fileutils'
 
 module FileDiscard
 
@@ -112,18 +113,23 @@ module FileDiscard
     def discard(obj, options = {})
       pn = pathname_for obj
       if pn.directory?
-        if SPECIAL_DIRS.include?(pn.basename.to_s)
+        SPECIAL_DIRS.include?(pn.basename.to_s) and
           raise Errno::EINVAL.new(SPECIAL_DIRS.join(' and ') << ' may not be removed')
-        end
         unless options[:recursive]
-          raise Errno::EISDIR.new(pn.to_s)    unless options[:directory]
-          raise Errno::ENOTEMPTY.new(pn.to_s) if pn.children.any?
+          options[:directory] or raise Errno::EISDIR.new(pn.to_s)
+          pn.children.any? and raise Errno::ENOTEMPTY.new(pn.to_s)
         end
+      end
+
+      if options.key?(:force) && options[:force] > 1
+        $stderr.puts "Warning: Permanently removing #{pn}"
+        FileUtils.rm_rf(pn, {verbose: options[:verbose] || false})
+        return
       end
 
       trash = find_trash_for pn
       unless trash.exist?
-        raise TrashMissing.new(trash.to_s) unless FileDiscard.create_trash_when_missing
+        FileDiscard.create_trash_when_missing or raise TrashMissing.new(trash.to_s)
         trash.mkpath
       end
 
@@ -163,13 +169,13 @@ module FileDiscard
       def move(src, dst, options)
         src = src.expand_path
         dst = uniquify(dst.join(src.basename))
-        puts "#{src} => #{dst}" if options[:verbose]
+        options[:verbose] and puts "#{src} => #{dst}"
         File.rename(src, dst)
-        yield(src, dst) if block_given?
+        block_given? and yield(src, dst)
       end
 
       def uniquify(pn)
-        return pn unless pn.exist?
+        pn.exist? or return pn
 
         dn   = pn.dirname
         ext  = pn.extname
@@ -180,7 +186,7 @@ module FileDiscard
         10.times do |i|
           ts = Time.now.strftime(fmt)
           pn = dn.join("#{base} #{ts}#{ext}")
-          return pn unless pn.exist?
+          pn.exist? or return pn
           fmt = bfmt + ".%#{i}N" # use fractional seconds, with increasing precision
         end
 
@@ -204,7 +210,9 @@ module FileDiscard
     private
       def move(*args)
         super do |src, dst|
-          dst.dirname.dirname.join('info',"#{dst.basename}.trashinfo").open('w') do |io|
+          infodir = dst.dirname.dirname.join('info')
+          infodir.directory? or infodir.mkpath
+          infodir.join("#{dst.basename}.trashinfo").open('w') do |io|
             io.write <<EOF
 [Trash Info]
 Path=#{src}
