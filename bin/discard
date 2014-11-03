@@ -55,8 +55,14 @@ FileDiscard.create_trash_when_missing = true
 
 status = 0
 ARGV.each do |file|
+  options.force > 1 and $stderr.puts "Warning: Permanently removing #{file}"
   begin
     FileDiscard.discard(file, options.marshal_dump)
+  rescue FileDiscard::TrashNotPermitted => ex
+    $stderr.puts "#{parser.program_name}: #{file}: #{ex.message}"
+    options.verbose and $stderr.puts ex.backtrace
+    $stderr.puts "Consider using -ff to permanently remove"
+    status = 3
   rescue Errno::EINVAL, Errno::ENOENT => ex
     $stderr.puts "#{parser.program_name}: #{file}: #{ex.message}"
     status = 1

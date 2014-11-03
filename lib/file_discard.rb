@@ -85,6 +85,10 @@ module FileDiscard
   # Raised when the configured trash directory for a given mountpoint does not exist.
   class TrashMissing < Errno::ENOENT; end;
 
+  # Raised when the configured trash directory for a given mountpoint does not exist
+  # and user does not have permissions to create it.
+  class TrashNotPermitted < Errno::EACCES; end;
+
   # The core logic for moving files to an appropriate trash directory.
   class Discarder
     SPECIAL_DIRS = ['.','..'] # :nodoc:
@@ -99,6 +103,7 @@ module FileDiscard
     # Request that +obj+ be moved to the trash.
     #
     # +options+ - a hash of any of the following:
+    # * :force - if greater than one, permanently remove +obj+
     # * :directory - allow an empty directory to be discarded
     # * :recursive - allow a directory to be discarded even if not empty
     # * :verbose - report the move operation
@@ -122,7 +127,6 @@ module FileDiscard
       end
 
       if options.key?(:force) && options[:force] > 1
-        $stderr.puts "Warning: Permanently removing #{pn}"
         FileUtils.rm_rf(pn, {verbose: options[:verbose] || false})
         return
       end
@@ -130,7 +134,11 @@ module FileDiscard
       trash = find_trash_for pn
       unless trash.exist?
         FileDiscard.create_trash_when_missing or raise TrashMissing.new(trash.to_s)
-        trash.mkpath
+        begin
+          trash.mkpath
+        rescue Errno::EACCES
+          raise TrashNotPermitted.new("Unable to create #{trash.to_s}")
+        end
       end
 
       move_options = options.has_key?(:verbose) ? {verbose: options[:verbose]} : {}
